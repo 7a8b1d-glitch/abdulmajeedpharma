@@ -104,7 +104,10 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+# Ignore local .sql dumps but NOT versioned migrations/seeds
 *.sql
+!database/migrations/*.sql
+!database/seeds/*.sql
 local-db/
 data/*.db
 
