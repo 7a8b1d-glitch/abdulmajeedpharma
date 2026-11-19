@@ -1,0 +1,80 @@
+name: aph_mobile
+description: Abdulmajeedpharma — pharmaceutical platform for Android (Flutter).
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.0.0
+
+  # Supabase (auth + storage)
+  supabase_flutter: ^2.5.0
+
+  # Local offline database (SQLite)
+  drift: ^2.22.0
+  sqlite3_flutter_libs: ^0.5.16
+  path_provider: ^2.1.2
+  path: ^1.9.0
+
+  # Localization and RTL/LTR
+  intl: ^0.18.1
+  flutter_localizations:
+    sdk: flutter
+
+  # Dependency injection
+  get_it: ^7.7.0
+
+  # Networking
+  dio: ^5.4.0
+
+  # Utilities
+  equatable: ^2.0.5
+  uuid: ^4.3.3
+  shared_preferences: ^2.2.2
+
+  # Camera / barcode / image recognition
+  image_picker: ^1.0.7
+  mobile_scanner: ^5.0.0
+  google_ml_kit: ^0.13.0
+
+  # UI
+  google_fonts: ^6.1.0
+  flutter_svg: ^2.0.9
+  shimmer: ^3.0.0
+
+  # Connectivity
+  connectivity_plus: ^6.0.0
+
+  # Notifications
+  firebase_messaging: ^15.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.9
+  drift_dev: ^2.22.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/translations/
+  fonts:
+    - family: Tajawal
+      fonts:
+        - asset: assets/fonts/Tajawal-Regular.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
