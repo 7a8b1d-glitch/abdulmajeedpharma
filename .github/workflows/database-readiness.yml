@@ -97,6 +97,8 @@ jobs:
           psql --version
 
       - name: Install test-only auth.uid() shim
+        env:
+          PGPASSWORD: aph_test_password
         run: |
           psql -h localhost -U aph_test -d aph_test_db -f backend/tests/integration/00_test_auth_uid_shim.sql
 
@@ -122,6 +124,8 @@ jobs:
           python scripts/run_migrations.py --dsn "$DSN"
 
       - name: Clean up test database
+        env:
+          PGPASSWORD: aph_test_password
         if: always()
         run: |
           psql -h localhost -U aph_test -d aph_test_db -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null || true
