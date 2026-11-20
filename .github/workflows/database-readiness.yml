@@ -1,0 +1,135 @@
+name: Database Readiness
+
+on:
+  push:
+    branches: [arena/fcc02306-abdulmajeedpharma]
+  pull_request:
+    branches: [arena/fcc02306-abdulmajeedpharma]
+
+jobs:
+  static-validation:
+    name: Static SQL Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Run static schema tests (no live DB)
+        run: |
+          cd backend
+          source .venv/bin/activate
+          python -m pytest tests/ -v --tb=short
+
+      - name: Verify all migrations parse with pglast
+        run: |
+          cd backend
+          source .venv/bin/activate
+          python3 -c "
+import pglast
+from pathlib import Path
+migrations = sorted(Path('../database/migrations').glob('*.sql'))
+for f in migrations:
+    pglast.parse_sql(f.read_text())
+    print(f'PASS: {f.name}')
+print(f'All {len(migrations)} migrations parse cleanly.')
+"
+
+  live-database-tests:
+    name: Live PostgreSQL Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: aph_test
+          POSTGRES_PASSWORD: aph_test_password
+          POSTGRES_DB: aph_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aph_test -d aph_test_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements.txt
+          pip install psycopg2-binary
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          until pg_isready -h localhost -p 5432 -U aph_test -d aph_test_db; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL is ready."
+
+      - name: Install test-only auth.uid() shim
+        run: |
+          psql -h localhost -U aph_test -d aph_test_db -f backend/tests/integration/00_test_auth_uid_shim.sql
+
+      - name: Run migration execution tests against live PostgreSQL
+        run: |
+          cd backend
+          source .venv/bin/activate
+          DSN="postgresql://aph_test:aph_test_password@localhost:5432/aph_test_db"
+          python scripts/run_migrations.py --dsn "$DSN"
+
+      - name: Run PostgreSQL integration tests
+        run: |
+          cd backend
+          source .venv/bin/activate
+          DSN="postgresql://aph_test:aph_test_password@localhost:5432/aph_test_db"
+          python scripts/run_postgresql_integration.py --dsn "$DSN"
+
+      - name: Run migration idempotency test (second run)
+        run: |
+          cd backend
+          source .venv/bin/activate
+          DSN="postgresql://aph_test:aph_test_password@localhost:5432/aph_test_db"
+          python scripts/run_migrations.py --dsn "$DSN"
+
+      - name: Clean up test database
+        if: always()
+        run: |
+          psql -h localhost -U aph_test -d aph_test_db -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null || true
+
+  documentation:
+    name: Verify Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Phase 02.5 report exists
+        run: |
+          if [ ! -f docs/PHASE_02_5_REMEDIATION_REPORT.md ]; then
+            echo "ERROR: docs/PHASE_02_5_REMEDIATION_REPORT.md is missing"
+            exit 1
+          fi
+          echo "Phase 02.5 report exists."

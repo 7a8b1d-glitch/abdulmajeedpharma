@@ -161,8 +161,9 @@ RLS enabled on all 39 tables. Policies cover:
 | Test | Result |
 |------|--------|
 | Phase 01 health check (`scripts/health_check.py`) | 95/95 PASS |
-| Phase 02 backend tests (`pytest tests/`) | 198 passed |
+| Phase 02 backend tests (`pytest tests/`) | 222 passed |
 | SQL migration parsing (sqlglot) | 11/11 files parse |
+| PostgreSQL grammar validation (pglast) | 11/11 migrations parse |
 | SQLAlchemy model import | 39/39 models import |
 | Model/migration consistency | 39/39 tables match |
 
@@ -208,6 +209,41 @@ All Phase 01 files remain intact:
 - `database/migrations/`, `database/seeds/` (empty, migrations added)
 - `docs/` (Phase 01 docs preserved, Phase 02 docs added)
 - `scripts/health_check.py`
+
+## Phase 02.1 — Critical Database & Security Remediation
+
+A follow-up remediation pass (Phase 02.1) addressed two CRITICAL and five HIGH
+severity findings identified during native PostgreSQL grammar validation
+(pglast) and security review:
+
+**CRITICAL fixes:**
+- Migration `003_drug_catalog.sql`: Replaced invalid expression-based table
+  `UNIQUE (LEAST(...), GREATEST(...))` constraint with `CREATE UNIQUE INDEX`
+  on `LEAST(drug_id, interacting_drug_id), GREATEST(drug_id, interacting_drug_id)`
+  plus `CHECK (drug_id <> interacting_drug_id)`.
+- Migration `010_rls_and_storage_policies.sql`: Replaced all 28
+  `CREATE POLICY IF NOT EXISTS` statements (invalid PostgreSQL syntax) with
+  `DROP POLICY IF EXISTS` + `CREATE POLICY`. Each policy now specifies exactly
+  one operation per `FOR` clause.
+
+**HIGH security fixes:**
+- Role escalation prevention: `users_update_own_profile` policy enforces
+  `role = OLD.role` (and `email_verified`, `is_active` frozen) in `WITH CHECK`.
+- Evidence verification bypass blocked: Editors cannot insert/update evidence
+  with `is_verified = TRUE`; `WITH CHECK (is_verified = FALSE)` enforced.
+- Review history protection: Reviewers/admins cannot DELETE content_reviews;
+  append-only with superseding records.
+- Profile delete protection: Administrators cannot DELETE user_profiles;
+  deactivation via `is_active = FALSE` instead.
+- FORCE RLS on user-private tables: `user_profiles`, `conversations`,
+  `conversation_participants`, `messages`, `message_read_receipts`,
+  `notifications`.
+
+**New tests added:** PostgreSQL grammar validation test for all 11 migrations
+(`test_migration_parses_with_postgresql_grammar`) plus 11 security regression
+tests covering all Phase 02.1 fixes. Total test count: 222.
+
+See `docs/PHASE_02_1_REMEDIATION_REPORT.md` for the full remediation report.
 
 ## Git Status
 

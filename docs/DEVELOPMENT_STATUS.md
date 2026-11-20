@@ -40,9 +40,9 @@ Status values: IMPLEMENTED | TESTED | REQUIRES_EXTERNAL_CONFIGURATION | BLOCKED 
 | app/schemas/* | IMPLEMENTED | Python syntax validated |
 | app/services/* | IMPLEMENTED | Scaffold |
 | app/repositories/* | IMPLEMENTED | Scaffold |
-| tests/ | IMPLEMENTED | 198 tests passing |
+| tests/ | IMPLEMENTED | 254 tests passing (243 Phase 01–02.3 + 11 Phase 02.4) |
 | requirements.txt | IMPLEMENTED | Installed in `.venv` |
-| Backend import/tests | TESTED | 198 tests passed (static validation) |
+| Backend import/tests | TESTED | 254 tests passed (static validation + pglast grammar + security regression) |
 
 ## Admin (Next.js)
 
@@ -55,15 +55,22 @@ Status values: IMPLEMENTED | TESTED | REQUIRES_EXTERNAL_CONFIGURATION | BLOCKED 
 
 | Item | Status | Notes |
 |------|--------|-------|
-| migrations/ (11 files) | IMPLEMENTED | SQL validated statically (sqlglot) |
+| migrations/ (13 files) | IMPLEMENTED | SQL validated statically (pglast); 013 adds migration tracking + legacy compat + reviewed_at protection |
 | seeds/ (011 seed) | IMPLEMENTED | Idempotent seed for 18 body systems + Yemen |
 | 18 body systems seeded | IMPLEMENTED | Stable codes, English + Arabic names |
 | Yemen country seeded | IMPLEMENTED | Code YE |
-| RLS policies | IMPLEMENTED | Defined in migration 010 |
+| RLS policies | IMPLEMENTED | Defined in migration 010; INSERT policy blocks reviewed_at forgery |
 | SQLAlchemy models (39) | IMPLEMENTED | Match migrations; all import OK |
-| Backend-model consistency | TESTED | 197 schema tests passed |
-| Real PostgreSQL execution | BLOCKED | No PostgreSQL server available |
-| Alembic integration | NOT_IMPLEMENTED | SQL migrations used directly |
+| Backend-model consistency | TESTED | 254 schema/pglast/security tests passed (static validation) |
+| Column-level security (user_profiles) | IMPLEMENTED | REVOKE/GRANT on privileged columns in migration 010 |
+| Column-level security (content_reviews.reviewed_at) | IMPLEMENTED | REVOKE UPDATE (reviewed_at) FROM PUBLIC/authenticated in migration 013 |
+| SECURITY DEFINER functions | IMPLEMENTED | aph_manage_user_role, aph_manage_user_profile in migration 010; aph_correct_reviewed_at in migration 013 |
+| Review traceability | IMPLEMENTED | reviewed_at NOT NULL DEFAULT now(), reviewer_id FK, no-self-review trigger, reviewed_at immutable trigger |
+| Migration 012 (review trigger) | IMPLEMENTED | assert_no_self_review() function + trigger after drug_evidence.created_by exists |
+| Migration 013 (tracking + legacy + protection) | IMPLEMENTED | schema_migrations table, legacy content_reviews repair, reviewed_at column-level REVOKE + trigger + SECURITY DEFINER correction |
+| Real PostgreSQL execution | BLOCKED | No PostgreSQL server available; CI workflow defined in .github/workflows/database-readiness.yml |
+| Alembic integration | NOT_IMPLEMENTED | Lightweight SQL runner (backend/scripts/run_migrations.py) used instead |
+| Migration runner | IMPLEMENTED | backend/scripts/run_migrations.py — dry-run validated |
 
 ## Data Import
 
@@ -131,10 +138,11 @@ Status values: IMPLEMENTED | TESTED | REQUIRES_EXTERNAL_CONFIGURATION | BLOCKED 
 | FastAPI | 0.111.0 | TESTED (in .venv) |
 | Pytest | 8.2.0 | TESTED (in .venv) |
 | sqlglot | 30.33.0 | TESTED (static SQL validation) |
+| pglast | 8.9 | TESTED (native PostgreSQL grammar validation, 13/13 migrations) |
 
 ## Summary
 
 - Implemented scaffold files: yes (all Phase 01 + Phase 02)
-- Actually executed & tested: health_check.py (95/95), backend tests (198 passed), Python syntax validation, SQL static validation (11/11 migrations)
+- Actually executed & tested: health_check.py (95/95), backend tests (254 passed), Python syntax validation, SQL static validation (13/13 migrations via pglast), migration runner dry-run validated
 - Blocked: Flutter analyze/test, real PostgreSQL execution, Docker build, Alembic integration
 - Deployed: no

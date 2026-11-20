@@ -21,16 +21,56 @@ reference data (18 body systems, Yemen country) is included.
 | 002 | `002_geography_and_classification.sql` | countries, body_systems, therapeutic_classes, pharmacological_classes, drug_classes |
 | 003 | `003_drug_catalog.sql` | active_ingredients, drugs, drug_ingredients, drug_class_links, drug_indications, drug_contraindications, drug_adverse_effects, drug_interactions, drug_dosage_information, drug_special_populations, drug_images |
 | 004 | `004_companies_and_market.sql` | manufacturers, marketing_authorization_holders, suppliers, distributors, brand_products, product_presentations, product_markets, product_registration_records |
-| 005 | `005_scientific_evidence_and_reviews.sql` | scientific_sources, drug_evidence, content_reviews |
-| 006 | `006_users_and_permissions.sql` | user_profiles (linked to Supabase auth.users) |
+| 005 | `005_scientific_evidence_and_reviews.sql` | scientific_sources, drug_evidence (no content_reviews — forward dependency fixed; content_reviews moved to 006) |
+| 006 | `006_users_and_permissions.sql` | user_profiles (linked to Supabase auth.users), content_reviews (reviewer_id FK, reviewed_at NOT NULL DEFAULT now(), review_status CHECK) |
 | 007 | `007_messaging_and_notifications.sql` | conversations, conversation_participants, messages, message_attachments, message_read_receipts, notifications |
 | 008 | `008_imports_and_audit.sql` | import_batches, import_batch_items, import_errors, audit_logs, sync_records |
 | 009 | `009_indexes_and_search.sql` | Full-text search vectors, trigram indexes, composite indexes |
-| 010 | `010_rls_and_storage_policies.sql` | RLS enablement, ownership columns, role-based policies |
+| 010 | `010_rls_and_storage_policies.sql` | RLS enablement, ownership columns, role-based policies, FORCE RLS on user-private tables; content_reviews INSERT/UPDATE policies bind reviewer_id = auth.uid() and block reviewed_at forgery |
 | 011 | `011_seed_reference_data.sql` | Yemen country, 18 body systems (idempotent) |
+| 012 | `012_review_trigger.sql` | assert_no_self_review() trigger function and trigger on content_reviews |
+| 013 | `013_migration_tracking_and_legacy_compat.sql` | schema_migrations tracking table; legacy content_reviews repair; reviewed_at column-level REVOKE + assert_reviewed_at_immutable trigger + aph_correct_reviewed_at SECURITY DEFINER correction function |
 
 Migrations are safe to apply in the documented order and use `IF NOT EXISTS`
 /`ON CONFLICT DO NOTHING` where appropriate for idempotency.
+
+### Migration Order — content_reviews Table
+
+The `content_reviews` table is created in migration 006 (not 005) because it has
+foreign keys to `user_profiles`, which is created in migration 006. The
+`assert_no_self_review()` trigger is created in migration 012 because it
+references `drug_evidence.created_by`, which is added by migration 010.
+
+Migration 013 repairs legacy `content_reviews` tables from pre-Phase-02.3
+deployments (adds missing FKs, ensures reviewed_at NOT NULL, adds missing
+columns/indexes) and adds reviewed_at protection (column-level REVOKE,
+assert_reviewed_at_immutable trigger, aph_correct_reviewed_at SECURITY DEFINER
+function).
+
+### Migration 003 — drug_interactions Self-Interaction Prevention
+
+The `drug_interactions` table uses a `CHECK (drug_id <> interacting_drug_id)` constraint
+plus an expression-based unique index to prevent duplicate pair entries and self-interactions:
+
+```sql
+CREATE UNIQUE INDEX idx_drug_interactions_unique_pair
+    ON public.drug_interactions (LEAST(drug_id, interacting_drug_id), GREATEST(drug_id, interacting_drug_id));
+```
+
+This expression-based index cannot be expressed as a table-level `UNIQUE` constraint
+(PostgreSQL does not allow function expressions in table constraints), so it is
+implemented as a `CREATE UNIQUE INDEX` instead.
+
+### Migration 010 — RLS Policy Architecture
+
+All `CREATE POLICY` statements use the idempotent `DROP POLICY IF EXISTS` +
+`CREATE POLICY` pattern (PostgreSQL does not support `IF NOT EXISTS` on `CREATE POLICY`).
+Each policy specifies exactly one operation (SELECT, INSERT, UPDATE, or DELETE)
+because PostgreSQL does not allow comma-separated operations in the `FOR` clause.
+
+Policies are split per operation where needed (e.g.
+`admins_manage_user_profiles_select`, `admins_manage_user_profiles_insert`,
+`admins_manage_user_profiles_update`).
 
 ## Table Reference
 
@@ -79,7 +119,7 @@ Migrations are safe to apply in the documented order and use `IF NOT EXISTS`
 |-------|---------|-----------|
 | `scientific_sources` | Scientific references (journals, regulatory docs) | title, citation_text |
 | `drug_evidence` | Evidence claims linked to drug/product + source | claim_text_en, claim_text_ar |
-| `content_reviews` | Review workflow records | review_notes |
+| `content_reviews` | Review workflow records with traceability | review_notes, reviewer_id, reviewed_at |
 
 ### Users & Access
 
@@ -129,6 +169,34 @@ uses `created_at` and `read_at`.
   sync operation/status, etc.).
 - **Foreign keys:** All relationships use `ON DELETE CASCADE` or
   `ON DELETE RESTRICT`/`SET NULL` as appropriate.
+
+## Column-Level Security (user_profiles)
+
+Column-level privileges work with RLS: RLS restricts row access, column-level
+privileges restrict column modification.
+
+| Column | UPDATE on `authenticated` | Modified via |
+|--------|---------------------------|--------------|
+| `full_name` | ✅ GRANTED | Direct UPDATE (own row only) |
+| `phone` | ✅ GRANTED | Direct UPDATE (own row only) |
+| `country_id` | ✅ GRANTED | Direct UPDATE (own row only) |
+| `language` | ✅ GRANTED | Direct UPDATE (own row only) |
+| `role` | ❌ REVOKED | `aph_manage_user_role()` (admin only) |
+| `is_active` | ❌ REVOKED | `aph_manage_user_profile()` (admin only) |
+| `email_verified` | ❌ REVOKED | Supabase Auth only |
+| `email` | ❌ No UPDATE | Supabase Auth only |
+| `user_id` | ❌ No UPDATE (PK) | Immutable |
+
+## SECURITY DEFINER Functions
+
+| Function | Purpose | Caller Restriction |
+|----------|---------|-------------------|
+| `aph_current_user_role()` | Resolve caller's application role | Revoked from PUBLIC |
+| `aph_manage_user_role(UUID, VARCHAR)` | Change another user's role (controlled workflow) | Administrator only |
+| `aph_manage_user_profile(...)` | Update non-role profile fields (admin) | Administrator only |
+
+All SECURITY DEFINER functions use `SET search_path = pg_temp, public` and
+have EXECUTE revoked from PUBLIC.
 
 ## Indexes
 

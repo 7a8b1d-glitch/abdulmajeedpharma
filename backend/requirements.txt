@@ -39,3 +39,7 @@ email-validator==2.1.0
 pytest==8.2.0
 pytest-asyncio==0.23.5
 httpx>=0.24.0,<0.27.0
+
+# Development / validation
+pglast==8.9
+sqlglot==30.33.0

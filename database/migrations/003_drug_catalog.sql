@@ -148,14 +148,19 @@ CREATE TABLE public.drug_interactions (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    -- Prevent duplicate interaction rows in either direction.
-    CONSTRAINT uq_drug_interaction_pair
-        UNIQUE (LEAST(drug_id, interacting_drug_id), GREATEST(drug_id, interacting_drug_id)),
-
     -- A drug should not interact with itself.
     CONSTRAINT chk_drug_not_self_interaction
         CHECK (drug_id <> interacting_drug_id)
 );
+
+-- Prevent duplicate interaction rows in either direction using an
+-- expression-based unique index. PostgreSQL does not allow expressions
+-- in table-level UNIQUE constraints, so a unique index is used instead.
+CREATE UNIQUE INDEX idx_drug_interactions_unique_pair
+    ON public.drug_interactions (
+        LEAST(drug_id, interacting_drug_id),
+        GREATEST(drug_id, interacting_drug_id)
+    );
 
 -- ========================================================================
 -- drug_dosage_information
