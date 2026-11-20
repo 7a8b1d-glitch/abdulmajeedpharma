@@ -90,6 +90,12 @@ jobs:
           done
           echo "PostgreSQL is ready."
 
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          psql --version
+
       - name: Install test-only auth.uid() shim
         run: |
           psql -h localhost -U aph_test -d aph_test_db -f backend/tests/integration/00_test_auth_uid_shim.sql
